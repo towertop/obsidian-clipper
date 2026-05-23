@@ -5,6 +5,7 @@
 
 import browser from './browser-polyfill';
 import { sendExtractContent } from './variables/selector';
+import { resolveRegexVariable } from './variables/regex';
 
 /**
  * Context for variable resolution, including optional tabId for selector support
@@ -49,6 +50,12 @@ export function resolveVariable(name: string, variables: { [key: string]: any })
 	// Schema variable: schema:key
 	if (trimmed.startsWith('schema:')) {
 		return resolveSchemaVariable(trimmed, variables);
+	}
+
+	// Regex variable: regex:pattern or regex:pattern:group
+	if (trimmed.startsWith('regex:')) {
+		const fullHtml = variables['{{fullHtml}}'] || variables['fullHtml'];
+		return resolveRegexVariable(trimmed, fullHtml);
 	}
 
 	// Simple key (no dots or brackets) - try {{name}} wrapper first

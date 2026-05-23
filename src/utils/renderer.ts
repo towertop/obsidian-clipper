@@ -25,6 +25,7 @@ import {
 	parse,
 } from './parser';
 import { applyFilterDirect as builtInApplyFilterDirect } from './filters';
+import { resolveRegexVariable } from './variables/regex';
 
 // Filter application function type for direct invocation (already-parsed filter name and params)
 type ApplyFilterDirectFn = (value: string, filterName: string, paramString: string | undefined, currentUrl: string) => string;
@@ -538,6 +539,15 @@ async function evaluateIdentifier(expr: IdentifierExpression, state: RenderState
 		// Return undefined if not found - schema variables are resolved at render time,
 		// not in post-processing, so there's no benefit to preserving a placeholder
 		return value;
+	}
+
+	// Regex variables - resolve against full HTML source
+	if (name.startsWith('regex:')) {
+		const fullHtml = state.context.variables['{{fullHtml}}'] || state.context.variables['fullHtml'];
+		if (fullHtml) {
+			return resolveRegexVariable(name, fullHtml);
+		}
+		return undefined;
 	}
 
 	// Prompt variables - preserve for post-processing
