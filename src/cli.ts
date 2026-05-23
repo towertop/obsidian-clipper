@@ -186,7 +186,11 @@ async function main(): Promise<void> {
 			html = fs.readFileSync(path.resolve(args.htmlPath), 'utf-8');
 		}
 	} else {
-		const response = await fetch(args.url);
+		const fetchInit: RequestInit = {};
+		if (template?.headers) {
+			fetchInit.headers = new Headers(template.headers);
+		}
+		const response = await fetch(args.url, fetchInit);
 		if (!response.ok) {
 			console.error(`Failed to fetch ${args.url}: ${response.status} ${response.statusText}`);
 			process.exit(1);
