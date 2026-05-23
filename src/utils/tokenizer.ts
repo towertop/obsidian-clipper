@@ -772,6 +772,17 @@ function tokenizeIdentifier(state: TokenizerState): void {
 		value = tokenizeCssSelector(state, value);
 	}
 
+	// Special handling for regex variables (regex: prefix)
+	// Regex patterns can contain brackets, parentheses, quotes, and other special characters
+	if (value === 'regex' &&
+		state.pos < state.input.length && state.input[state.pos] === ':') {
+		// Consume the colon
+		value += ':';
+		advanceChar(state);
+		// Continue reading the regex pattern
+		value = tokenizeRegexPattern(state, value);
+	}
+
 	// Check if it's a keyword
 	const lowerValue = value.toLowerCase();
 	const keywordType = KEYWORDS[lowerValue];
@@ -936,6 +947,73 @@ function tokenizeCssSelector(state: TokenizerState, value: string): string {
 
 	// Trim trailing whitespace from the selector
 	return value.trimEnd();
+}
+
+/**
+ * Continue tokenizing a regex literal after the regex: prefix.
+ * Expects JS-style literal: /pattern/flags[:group]
+ * e.g. regex:/var createTime = '(\d{4}-\d{2}-\d{2})'/g:1
+ */
+function tokenizeRegexPattern(state: TokenizerState, value: string): string {
+	// Opening /
+	if (state.input[state.pos] !== '/') {
+		state.errors.push({
+			message: `Expected '/' after regex:, got '${state.input[state.pos] || 'EOF'}'`,
+			line: state.line,
+			column: state.column,
+		});
+		return value;
+	}
+	value += '/';
+	advanceChar(state);
+
+	// Read pattern until unescaped /
+	let escaped = false;
+	while (state.pos < state.input.length) {
+		const char = state.input[state.pos];
+
+		if (escaped) {
+			value += char;
+			escaped = false;
+			advanceChar(state);
+			continue;
+		}
+
+		if (char === '\\') {
+			value += char;
+			escaped = true;
+			advanceChar(state);
+			continue;
+		}
+
+		if (char === '/') {
+			// Closing /
+			value += '/';
+			advanceChar(state);
+			break;
+		}
+
+		value += char;
+		advanceChar(state);
+	}
+
+	// Read flags (gimsuy)
+	while (state.pos < state.input.length && /[gimsuy]/.test(state.input[state.pos])) {
+		value += state.input[state.pos];
+		advanceChar(state);
+	}
+
+	// Read optional group specifier :number
+	if (state.pos < state.input.length && state.input[state.pos] === ':') {
+		value += ':';
+		advanceChar(state);
+		while (state.pos < state.input.length && /\d/.test(state.input[state.pos])) {
+			value += state.input[state.pos];
+			advanceChar(state);
+		}
+	}
+
+	return value;
 }
 
 // ============================================================================

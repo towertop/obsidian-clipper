@@ -2,9 +2,9 @@ import { applyFilters } from '../filters';
 
 /**
  * Resolve a regex variable against full HTML source.
- * Syntax: {{regex:pattern}} or {{regex:pattern:group}}
+ * Syntax: {{regex:/pattern/flags}} or {{regex:/pattern/flags:group}}
  *
- * @param regexExpr - The full expression after {{regex:...}}
+ * @param regexExpr - The full expression: "regex:/pattern/flags[:group]"
  * @param fullHtml - The complete HTML string to search
  * @param filtersString - Optional filters after |
  * @returns The matched string or empty string
@@ -18,76 +18,96 @@ export function resolveRegexVariable(
 		return '';
 	}
 
-	// Parse pattern and optional group
-	// Format: pattern or pattern:group
-	const firstColon = regexExpr.indexOf(':');
-	if (firstColon === -1) {
+	// Strip "regex:" prefix
+	const inner = regexExpr.slice('regex:'.length);
+
+	// Parse: /pattern/flags[:group]
+	const parsed = parseRegexLiteral(inner);
+	if (!parsed) {
 		return '';
 	}
 
-	const rest = regexExpr.slice(firstColon + 1);
+	const { pattern, flags, group } = parsed;
 
-	// Handle potential filter separator confusion
-	// The pattern itself might contain |, but filters are separated by |
-	// We need to determine where pattern ends and filters begin
-	// Approach: split by |, try each segment boundary to find a valid regex
-
-	const segments = rest.split('|');
-	let patternStr: string;
-	let groupStr: string | undefined;
-	let actualFilters: string | undefined;
-
-	// Try progressively longer pattern segments
-	for (let i = 1; i <= segments.length; i++) {
-		patternStr = segments.slice(0, i).join('|');
-		const remaining = segments.slice(i).join('|');
-
-		// Check if pattern contains a group specifier
-		const lastColon = patternStr.lastIndexOf(':');
-		if (lastColon > 0) {
-			const potentialGroup = patternStr.slice(lastColon + 1);
-			// Group is a number or empty (empty means full match)
-			if (/^\d*$/.test(potentialGroup)) {
-				groupStr = potentialGroup || undefined;
-				patternStr = patternStr.slice(0, lastColon);
-			}
-		}
-
-		try {
-			const regex = new RegExp(patternStr);
-			actualFilters = remaining || undefined;
-			break;
-		} catch {
-			if (i === segments.length) {
-				// Last attempt, invalid regex
-				console.error('Invalid regex pattern:', patternStr);
-				return '';
-			}
-			// Continue trying longer pattern
-		}
+	let regex: RegExp;
+	try {
+		regex = new RegExp(pattern, flags);
+	} catch (e) {
+		console.error('Invalid regex:', pattern, e);
+		return '';
 	}
 
-	// Execute regex
-	const regex = new RegExp(patternStr!);
 	const match = regex.exec(fullHtml);
-
 	if (!match) {
 		return '';
 	}
 
-	// Extract group
+	// Extract result
 	let result: string;
-	if (groupStr) {
-		const groupIndex = parseInt(groupStr, 10);
-		result = match[groupIndex] || '';
+	if (group !== undefined) {
+		result = match[group] || '';
+	} else if (match.length > 1) {
+		// Has capture groups, default to group 1
+		result = match[1] || '';
 	} else {
 		result = match[0] || '';
 	}
 
 	// Apply filters
-	if (actualFilters) {
-		return applyFilters(result, actualFilters, '');
+	if (filtersString) {
+		return applyFilters(result, filtersString, '');
 	}
 
 	return result;
+}
+
+/**
+ * Parse a JS regex literal: /pattern/flags[:group]
+ * Returns { pattern, flags, group } or null if invalid.
+ */
+function parseRegexLiteral(literal: string): { pattern: string; flags: string; group?: number } | null {
+	// Must start with /
+	if (!literal.startsWith('/')) {
+		return null;
+	}
+
+	// Find closing / (accounting for escaped \/)
+	let i = 1;
+	let escaped = false;
+	while (i < literal.length) {
+		if (escaped) {
+			escaped = false;
+			i++;
+			continue;
+		}
+		if (literal[i] === '\\') {
+			escaped = true;
+			i++;
+			continue;
+		}
+		if (literal[i] === '/') {
+			break;
+		}
+		i++;
+	}
+
+	if (i >= literal.length) {
+		return null; // no closing /
+	}
+
+	const pattern = literal.slice(1, i);
+	const rest = literal.slice(i + 1);
+
+	// Parse flags and optional :group
+	// rest can be: "g" | "gi" | "g:1" | "" | ":1"
+	const flagMatch = rest.match(/^([gimsuy]*)(?::(\d+))?$/);
+	if (!flagMatch) {
+		return null;
+	}
+
+	return {
+		pattern,
+		flags: flagMatch[1] || '',
+		group: flagMatch[2] !== undefined ? parseInt(flagMatch[2], 10) : undefined,
+	};
 }
