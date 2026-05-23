@@ -2,6 +2,7 @@ export interface Template {
 	id: string;
 	name: string;
 	behavior: 'create' | 'append-specific' | 'append-daily' | 'prepend-specific' | 'prepend-daily' | 'overwrite';
+	forCLI?: Partial<Template>;
 	headers?: Record<string, string>;
 	noteNameFormat: string;
 	path: string;

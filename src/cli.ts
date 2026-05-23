@@ -136,6 +136,12 @@ function loadTemplatesFromDir(dirPath: string): Template[] {
 	});
 }
 
+function mergeForCLI(template: Template): void {
+	if (template.forCLI) {
+		Object.assign(template, template.forCLI);
+	}
+}
+
 // ---------------------------------------------------------------------------
 // linkedom-based DocumentParser for the API
 // ---------------------------------------------------------------------------
@@ -168,6 +174,9 @@ async function main(): Promise<void> {
 	} else {
 		const templateRaw = fs.readFileSync(resolvedTemplatePath, 'utf-8');
 		template = JSON.parse(templateRaw);
+		if (template) {
+			mergeForCLI(template);
+		}
 	}
 
 	// Load optional property types
@@ -224,6 +233,7 @@ async function main(): Promise<void> {
 		}
 		template = matched;
 		console.error(`Matched template: ${templateFilePaths.get(template) || 'unknown'}`);
+		mergeForCLI(template);
 	}
 
 	if (!template) {
